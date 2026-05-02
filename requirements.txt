@@ -1,5 +1,5 @@
-dash>=2.14.0
-plotly>=5.18.0
-pandas>=2.0.0
-numpy>=1.25.0
-gunicorn>=21.0.0
+dash
+plotly
+pandas
+numpy
+pyarrow
