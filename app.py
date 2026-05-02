@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import numpy as np
 import plotly.express as px
@@ -8,7 +9,6 @@ url = "https://huggingface.co/datasets/euclaise/goodreads_100k/resolve/main/trai
 
 df = pd.read_parquet(url)
 
-# normalize column names
 df.columns = df.columns.str.lower()
 
 df["title"] = df["title"].fillna("Unknown")
@@ -28,7 +28,7 @@ top_formats = df["bookformat"].value_counts().head(6).index.tolist()
 
 # ── App ───────────────────────────────────────────────────────────────────────
 app = Dash(__name__)
-server = app.server  # required for Render
+server = app.server  # IMPORTANT for Render + Gunicorn
 
 app.layout = html.Div([
 
@@ -57,7 +57,8 @@ app.layout = html.Div([
     ], style={"padding": "20px"}),
 
     # KPIs
-    html.Div(id="kpi-row", style={"display": "flex", "gap": "10px", "padding": "20px"}),
+    html.Div(id="kpi-row",
+             style={"display": "flex", "gap": "10px", "padding": "20px"}),
 
     # Charts
     html.Div([
@@ -76,6 +77,7 @@ app.layout = html.Div([
     Input("rating-slider", "value"),
 )
 def update(selected_formats, rating_range):
+
     if not selected_formats:
         selected_formats = top_formats[:3]
 
@@ -94,34 +96,40 @@ def update(selected_formats, rating_range):
             html.H3(value)
         ], style={"padding": "10px", "background": "white"})
 
+    avg_rating = round(filtered["rating"].mean(), 2) if len(filtered) else 0
+    median_pages = int(filtered["pages"].median()) if len(filtered) else 0
+
     kpis = [
         card("Books", len(filtered)),
-        card("Avg Rating", round(filtered["rating"].mean(), 2)),
-        card("Median Pages", int(filtered["pages"].median())),
+        card("Avg Rating", avg_rating),
+        card("Median Pages", median_pages),
     ]
 
     # Bar chart
     gc = filtered["genre"].value_counts().head(10).reset_index()
     gc.columns = ["Genre", "Books"]
-
     bar = px.bar(gc, x="Books", y="Genre", orientation="h")
 
-    # Scatter
-    scat = filtered.sample(min(3000, len(filtered)), random_state=42).copy()
-    scat["log_tr"] = np.log1p(scat["totalratings"])
+    # Scatter chart
+    if len(filtered) > 0:
+        scat = filtered.sample(min(3000, len(filtered)), random_state=42).copy()
+        scat["log_tr"] = np.log1p(scat["totalratings"])
 
-    scatter = px.scatter(
-        scat,
-        x="pages",
-        y="rating",
-        color="bookformat",
-        size="log_tr",
-        hover_data=["title"]
-    )
+        scatter = px.scatter(
+            scat,
+            x="pages",
+            y="rating",
+            color="bookformat",
+            size="log_tr",
+            hover_data=["title"]
+        )
+    else:
+        scatter = px.scatter()
 
     return bar, scatter, kpis
 
 
-# ── Run ───────────────────────────────────────────────────────────────────────
+# ── Run (LOCAL ONLY) ─────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    app.run(debug=False, host="0.0.0.0")
+    port = int(os.environ.get("PORT", 8050))
+    app.run(host="0.0.0.0", port=port, debug=False)
