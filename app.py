@@ -2,13 +2,28 @@ import os
 import pandas as pd
 import numpy as np
 import plotly.express as px
+import requests
 from dash import Dash, dcc, html, Input, Output
 
-# ── Data loading & cleaning ───────────────────────────────────────────────────
-url = "https://huggingface.co/datasets/euclaise/goodreads_100k/resolve/main/train.parquet"
+# ─────────────────────────────────────────────────────────────
+# 1) DATA AUTO-DOWNLOAD (FIX FOR GITHUB SIZE LIMITS)
+# ─────────────────────────────────────────────────────────────
+DATA_PATH = "train.parquet"
 
-df = pd.read_parquet(url)
+URL = "https://huggingface.co/datasets/euclaise/goodreads_100k/resolve/main/train.parquet"
 
+if not os.path.exists(DATA_PATH):
+    print("Downloading dataset...")
+    r = requests.get(URL)
+    r.raise_for_status()
+    with open(DATA_PATH, "wb") as f:
+        f.write(r.content)
+
+df = pd.read_parquet(DATA_PATH)
+
+# ─────────────────────────────────────────────────────────────
+# 2) CLEANING
+# ─────────────────────────────────────────────────────────────
 df.columns = df.columns.str.lower()
 
 df["title"] = df["title"].fillna("Unknown")
@@ -26,17 +41,19 @@ df = df[df["pages"] < 3000].copy()
 
 top_formats = df["bookformat"].value_counts().head(6).index.tolist()
 
-# ── App ───────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
+# 3) DASH APP
+# ─────────────────────────────────────────────────────────────
 app = Dash(__name__)
-server = app.server  # IMPORTANT for Render + Gunicorn
+server = app.server  # REQUIRED FOR RENDER
 
 app.layout = html.Div([
 
     # Header
     html.Div([
-        html.H1("📚 GoodReads Interactive Dashboard",
+        html.H1("📚 GoodReads Dashboard",
                 style={"margin": "0", "color": "white"}),
-        html.P("Phase 2 — Data Exploration and Visualization",
+        html.P("Interactive Analytics App",
                style={"margin": "4px 0 0", "color": "#cfe2ff"})
     ], style={"background": "#1a3c6b", "padding": "20px"}),
 
@@ -68,7 +85,9 @@ app.layout = html.Div([
 
 ])
 
-# ── Callback ──────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
+# 4) CALLBACKS
+# ─────────────────────────────────────────────────────────────
 @app.callback(
     Output("genre-bar", "figure"),
     Output("scatter-chart", "figure"),
@@ -89,12 +108,17 @@ def update(selected_formats, rating_range):
         (df["rating"] <= high)
     ]
 
-    # KPIs
+    # ── KPIs ─────────────────────────────────────────────
     def card(label, value):
         return html.Div([
             html.P(label),
             html.H3(value)
-        ], style={"padding": "10px", "background": "white"})
+        ], style={
+            "padding": "10px",
+            "background": "white",
+            "borderRadius": "8px",
+            "flex": "1"
+        })
 
     avg_rating = round(filtered["rating"].mean(), 2) if len(filtered) else 0
     median_pages = int(filtered["pages"].median()) if len(filtered) else 0
@@ -105,12 +129,12 @@ def update(selected_formats, rating_range):
         card("Median Pages", median_pages),
     ]
 
-    # Bar chart
+    # ── Bar chart ───────────────────────────────────────
     gc = filtered["genre"].value_counts().head(10).reset_index()
     gc.columns = ["Genre", "Books"]
     bar = px.bar(gc, x="Books", y="Genre", orientation="h")
 
-    # Scatter chart
+    # ── Scatter ─────────────────────────────────────────
     if len(filtered) > 0:
         scat = filtered.sample(min(3000, len(filtered)), random_state=42).copy()
         scat["log_tr"] = np.log1p(scat["totalratings"])
@@ -129,7 +153,9 @@ def update(selected_formats, rating_range):
     return bar, scatter, kpis
 
 
-# ── Run (LOCAL ONLY) ─────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
+# 5) RUN (LOCAL + RENDER SAFE)
+# ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8050))
     app.run(host="0.0.0.0", port=port, debug=False)
