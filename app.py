@@ -4,7 +4,7 @@ import plotly.express as px
 from dash import Dash, dcc, html, Input, Output
 
 # ── Data loading & cleaning ───────────────────────────────────────────────────
-url = "https://huggingface.co/datasets/euclaise/goodreads_100k/resolve/main/train.parquet"
+url = "https://www.kaggle.com/datasets/mdhamani/goodreads-books-100k"
 
 df = pd.read_parquet(url)
 
